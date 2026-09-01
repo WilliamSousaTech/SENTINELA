@@ -1,0 +1,149 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    background-color: #08080c;
+    color: #fff;
+    font-family: 'Rajdhani', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    position: relative;
+}
+.glow-bg {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(0, 230, 118, 0.1) 0%, rgba(0,0,0,0) 60%);
+    transform: translate(-50%, -50%);
+    z-index: -1;
+}
+.container {
+    width: 90%; max-width: 1000px;
+    text-align: center;
+    z-index: 1;
+}
+header h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 3.5rem;
+    letter-spacing: 4px;
+    margin-bottom: 5px;
+}
+.neon-text {
+    color: #00e676;
+    text-shadow: 0 0 10px #00e676, 0 0 20px rgba(0, 230, 118, 0.5);
+}
+.subtitle {
+    color: #6c757d;
+    font-size: 1.1rem;
+    margin-bottom: 40px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+.dashboard {
+    display: flex;
+    gap: 30px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+.card {
+    background: rgba(20, 20, 25, 0.7);
+    border: 1px solid #2a2a35;
+    border-radius: 16px;
+    padding: 35px 20px;
+    width: 280px;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 12px 40px rgba(0, 230, 118, 0.15);
+    border-color: #00e676;
+}
+.card-icon {
+    font-size: 2.5rem;
+    margin-bottom: 15px;
+    opacity: 0.8;
+}
+.card h3 {
+    font-size: 1.2rem;
+    color: #9aa0a6;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 15px;
+}
+.valor {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 2.6rem;
+    font-weight: 700;
+}
+.unit {
+    font-size: 1.2rem;
+    color: #5f6368;
+}
+.status-bar {
+    width: 100%; height: 6px;
+    background: #1e1e24;
+    margin-top: 25px;
+    border-radius: 3px;
+    overflow: hidden;
+}
+.fill { height: 100%; background: #00e676; box-shadow: 0 0 10px #00e676; transition: width 0.5s ease-out; }
+.temp-fill { width: 0%; }
+.umid-fill { width: 0%; background: #00b4d8; box-shadow: 0 0 10px #00b4d8; }
+
+/* Efeitos Especiais do Sensor PIR */
+.status-ok { color: #00e676; }
+.status-alerta { color: #ff1744; text-shadow: 0 0 15px rgba(255, 23, 68, 0.7); }
+.alert-card.active { 
+    border-color: #ff1744; 
+    box-shadow: 0 0 30px rgba(255, 23, 68, 0.2); 
+    background: rgba(35, 15, 20, 0.8);
+}
+.radar {
+    width: 50px; height: 50px;
+    border: 2px solid #00e676;
+    border-radius: 50%;
+    margin: 20px auto 0;
+    position: relative;
+    transition: border-color 0.3s ease;
+}
+.radar::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 100%; height: 100%;
+    background: rgba(0, 230, 118, 0.3);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: pulse 2s infinite cubic-bezier(0.1, 0.8, 0.3, 1);
+}
+.alert-card.active .radar { border-color: #ff1744; }
+.alert-card.active .radar::after { 
+    background: rgba(255, 23, 68, 0.4); 
+    animation: pulse-alert 0.8s infinite; 
+}
+
+@keyframes pulse { 
+    0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; } 
+    100% { transform: translate(-50%, -50%) scale(1.8); opacity: 0; } 
+}
+@keyframes pulse-alert { 
+    0% { transform: translate(-50%, -50%) scale(0.8); opacity: 1; } 
+    100% { transform: translate(-50%, -50%) scale(1.4); opacity: 0; } 
+}
+
+footer { margin-top: 50px; color: #5f6368; font-size: 0.95rem; letter-spacing: 1px; }
+.online-indicator { 
+    display: inline-block; 
+    width: 10px; height: 10px; 
+    background: #00e676; 
+    border-radius: 50%; 
+    margin-right: 6px; 
+    box-shadow: 0 0 8px #00e676; 
+    animation: blink 2s infinite; 
+}
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
