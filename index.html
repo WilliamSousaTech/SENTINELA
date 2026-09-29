@@ -17,7 +17,7 @@
 
         <main class="dashboard">
             <!-- Temperatura -->
-            <div class="card">
+            <div class="card" id="temp-card">
                 <div class="card-icon">🌡️</div>
                 <h3>Temperatura</h3>
                 <div class="valor" id="temp">-- <span class="unit">°C</span></div>
@@ -25,7 +25,7 @@
             </div>
 
             <!-- Umidade -->
-            <div class="card">
+            <div class="card" id="umid-card">
                 <div class="card-icon">💧</div>
                 <h3>Umidade</h3>
                 <div class="valor" id="umid">-- <span class="unit">%</span></div>
@@ -42,7 +42,7 @@
         </main>
         
         <footer>
-            <p>Status da Conexão: <span class="online-indicator"></span> Ao vivo via Firebase do Google</p>
+            <p>Status da Conexão: <span class="online-indicator"></span> <span id="footer-status">Ao vivo via Firebase do Google</span></p>
         </footer>
     </div>
     <script src="script.js"></script>
