@@ -1,592 +1,598 @@
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+// =====================================================
+// FIREBASE
+// =====================================================
+
+const firebaseURL =
+    'https://sentinela-a5028-default-rtdb.firebaseio.com/sensores.json';
+
+
+// =====================================================
+// ESTADO LOCAL
+// =====================================================
+
+let dados = {
+
+    temperatura: null,
+
+    umidade: null,
+
+    presenca: 0,
+
+    estado: 'NORMAL',
+
+    ultimoContato: null
+
+};
+
+
+let sistemaOffline = true;
+
+
+// =====================================================
+// ELEMENTOS
+// =====================================================
+
+const tempElement =
+    document.getElementById('temp');
+
+const umidElement =
+    document.getElementById('umid');
+
+const presElement =
+    document.getElementById('pres');
+
+const presCard =
+    document.getElementById('pres-card');
+
+const tempFill =
+    document.querySelector('.temp-fill');
+
+const umidFill =
+    document.querySelector('.umid-fill');
+
+const stateCard =
+    document.getElementById('state-card');
+
+const stateName =
+    document.getElementById('state-name');
+
+const stateDescription =
+    document.getElementById('state-description');
+
+const indicator =
+    document.querySelector('.online-indicator');
+
+const footerStatus =
+    document.getElementById('footer-status');
+
+
+// =====================================================
+// ATUALIZAR CONEXÃO
+// =====================================================
+
+function definirOnline() {
+
+    if (!sistemaOffline) {
+        return;
+    }
+
+    sistemaOffline = false;
+
+    indicator.classList.remove('offline');
+
+    indicator.classList.add('online');
+
+    indicator.classList.add('blinking');
+
+    footerStatus.innerText =
+        'ESP32 ONLINE • Firebase em tempo real';
 }
 
 
-body {
+function definirOffline() {
 
-    background-color: #08080c;
+    if (sistemaOffline) {
+        return;
+    }
 
-    color: #fff;
+    sistemaOffline = true;
 
-    font-family: 'Rajdhani', sans-serif;
+    indicator.classList.remove('online');
 
-    min-height: 100vh;
+    indicator.classList.remove('blinking');
 
-    display: flex;
+    indicator.classList.add('offline');
 
-    justify-content: center;
-
-    align-items: center;
-
-    overflow-x: hidden;
-
-    position: relative;
+    footerStatus.innerText =
+        'ESP32 OFFLINE • Sem sinal recente';
 }
 
 
-.glow-bg {
+// =====================================================
+// TEMPERATURA
+// =====================================================
 
-    position: absolute;
+function atualizarTemperatura() {
 
-    top: 50%;
-    left: 50%;
+    if (
+        typeof dados.temperatura !== 'number'
+    ) {
 
-    width: 600px;
-    height: 600px;
+        return;
+    }
 
-    background:
-        radial-gradient(
-            circle,
-            rgba(0, 230, 118, 0.1) 0%,
-            rgba(0, 0, 0, 0) 60%
+
+    const temp =
+        dados.temperatura;
+
+
+    tempElement.innerHTML =
+        `${temp.toFixed(1)}
+        <span class="unit">°C</span>`;
+
+
+    const percentual =
+        Math.min(
+            Math.max(
+                (temp / 50) * 100,
+                0
+            ),
+            100
         );
 
-    transform: translate(-50%, -50%);
 
-    z-index: -1;
-}
+    tempFill.style.width =
+        `${percentual}%`;
 
 
-.container {
+    let cor =
+        '#00e676';
 
-    width: 90%;
 
-    max-width: 1100px;
+    if (temp > 35) {
 
-    text-align: center;
+        cor = '#ff1744';
 
-    z-index: 1;
-
-    padding: 20px 0;
-}
-
-
-header h1 {
-
-    font-family: 'Orbitron', sans-serif;
-
-    font-size: 3.5rem;
-
-    letter-spacing: 4px;
-
-    margin-bottom: 5px;
-}
-
-
-.neon-text {
-
-    color: #00e676;
-
-    text-shadow:
-        0 0 10px #00e676,
-        0 0 20px rgba(0, 230, 118, 0.5);
-}
-
-
-.subtitle {
-
-    color: #6c757d;
-
-    font-size: 1.1rem;
-
-    margin-bottom: 40px;
-
-    letter-spacing: 2px;
-
-    text-transform: uppercase;
-}
-
-
-.dashboard {
-
-    display: flex;
-
-    gap: 30px;
-
-    justify-content: center;
-
-    flex-wrap: wrap;
-}
-
-
-.card {
-
-    background: rgba(20, 20, 25, 0.7);
-
-    border: 1px solid #2a2a35;
-
-    border-radius: 16px;
-
-    padding: 35px 20px;
-
-    width: 250px;
-
-    min-height: 250px;
-
-    backdrop-filter: blur(12px);
-
-    box-shadow:
-        0 8px 32px rgba(0, 0, 0, 0.4);
-
-    transition:
-        transform 0.2s ease,
-        box-shadow 0.2s ease,
-        border-color 0.2s ease;
-
-    position: relative;
-
-    overflow: hidden;
-}
-
-
-.card:hover {
-
-    transform: translateY(-4px);
-
-    border-color: #00e676;
-}
-
-
-.card-icon {
-
-    font-size: 2.5rem;
-
-    margin-bottom: 15px;
-
-    opacity: 0.8;
-}
-
-
-.card h3 {
-
-    font-size: 1.2rem;
-
-    color: #9aa0a6;
-
-    text-transform: uppercase;
-
-    letter-spacing: 1.5px;
-
-    margin-bottom: 15px;
-}
-
-
-.valor {
-
-    font-family: 'Orbitron', sans-serif;
-
-    font-size: 2.4rem;
-
-    font-weight: 700;
-}
-
-
-.unit {
-
-    font-size: 1.2rem;
-
-    color: #5f6368;
-}
-
-
-.status-bar {
-
-    width: 100%;
-
-    height: 6px;
-
-    background: #1e1e24;
-
-    margin-top: 25px;
-
-    border-radius: 3px;
-
-    overflow: hidden;
-}
-
-
-.fill {
-
-    height: 100%;
-
-    width: 0%;
-
-    transition:
-        width 0.2s linear,
-        background 0.2s linear;
-}
-
-
-.temp-fill {
-
-    background: #00e676;
-
-    box-shadow:
-        0 0 10px #00e676;
-}
-
-
-.umid-fill {
-
-    background: #00b4d8;
-
-    box-shadow:
-        0 0 10px #00b4d8;
-}
-
-
-
-/* =====================================================
-   PIR
-===================================================== */
-
-.alert-card.active {
-
-    border-color: #ff1744;
-
-    box-shadow:
-        0 0 30px rgba(255, 23, 68, 0.3);
-
-    background:
-        rgba(35, 15, 20, 0.8);
-}
-
-
-.radar {
-
-    width: 50px;
-
-    height: 50px;
-
-    border: 2px solid #00e676;
-
-    border-radius: 50%;
-
-    margin: 20px auto 0;
-
-    position: relative;
-
-    transition:
-        border-color 0.15s ease;
-}
-
-
-.radar::after {
-
-    content: '';
-
-    position: absolute;
-
-    top: 50%;
-    left: 50%;
-
-    width: 100%;
-    height: 100%;
-
-    background:
-        rgba(0, 230, 118, 0.3);
-
-    border-radius: 50%;
-
-    transform:
-        translate(-50%, -50%);
-
-    animation:
-        pulse 2s infinite;
-}
-
-
-.alert-card.active .radar {
-
-    border-color: #ff1744;
-}
-
-
-.alert-card.active .radar::after {
-
-    background:
-        rgba(255, 23, 68, 0.4);
-
-    animation:
-        pulse-alert 0.45s infinite;
-}
-
-
-@keyframes pulse {
-
-    0% {
-
-        transform:
-            translate(-50%, -50%)
-            scale(0.5);
-
-        opacity: 1;
     }
 
-    100% {
+    else if (temp >= 32) {
 
-        transform:
-            translate(-50%, -50%)
-            scale(1.8);
+        cor = '#ffea00';
+    }
 
-        opacity: 0;
+
+    tempFill.style.background =
+        cor;
+
+    tempFill.style.boxShadow =
+        `0 0 10px ${cor}`;
+}
+
+
+// =====================================================
+// UMIDADE
+// =====================================================
+
+function atualizarUmidade() {
+
+    if (
+        typeof dados.umidade !== 'number'
+    ) {
+
+        return;
+    }
+
+
+    const umid =
+        dados.umidade;
+
+
+    umidElement.innerHTML =
+        `${umid.toFixed(1)}
+        <span class="unit">%</span>`;
+
+
+    umidFill.style.width =
+        `${Math.min(Math.max(umid, 0), 100)}%`;
+
+
+    let cor =
+        '#00b4d8';
+
+
+    if (umid < 30) {
+
+        cor = '#ff1744';
+
+    }
+
+    else if (umid < 40) {
+
+        cor = '#ffea00';
+    }
+
+
+    umidFill.style.background =
+        cor;
+
+    umidFill.style.boxShadow =
+        `0 0 10px ${cor}`;
+}
+
+
+// =====================================================
+// PIR
+// =====================================================
+
+function atualizarPIR() {
+
+    const presenca =
+        Number(dados.presenca);
+
+
+    if (presenca === 1) {
+
+        presElement.innerText =
+            'DETECTADO';
+
+        presElement.style.color =
+            '#ff1744';
+
+        presCard.classList.add(
+            'active'
+        );
+
+    }
+
+    else {
+
+        presElement.innerText =
+            'VAZIO';
+
+        presElement.style.color =
+            '#00e676';
+
+        presCard.classList.remove(
+            'active'
+        );
     }
 }
 
 
-@keyframes pulse-alert {
+// =====================================================
+// ESTADO AMBIENTAL
+// =====================================================
 
-    0% {
+function atualizarEstado() {
 
-        transform:
-            translate(-50%, -50%)
-            scale(0.7);
+    const estado =
+        String(
+            dados.estado || 'NORMAL'
+        ).toUpperCase();
 
-        opacity: 1;
+
+    stateCard.classList.remove(
+        'normal',
+        'atencao',
+        'alerta'
+    );
+
+
+    // =================================================
+    // NORMAL
+    // =================================================
+
+    if (estado === 'NORMAL') {
+
+        stateCard.classList.add(
+            'normal'
+        );
+
+        stateName.innerText =
+            'NORMAL';
+
+        stateDescription.innerText =
+            'Ambiente dentro dos parâmetros';
     }
 
-    100% {
 
-        transform:
-            translate(-50%, -50%)
-            scale(1.5);
+    // =================================================
+    // ATENÇÃO
+    // =================================================
 
-        opacity: 0;
-    }
-}
+    else if (
+        estado === 'ATENCAO' ||
+        estado === 'ATENÇÃO'
+    ) {
 
+        stateCard.classList.add(
+            'atencao'
+        );
 
+        stateName.innerText =
+            'ATENÇÃO';
 
-/* =====================================================
-   ESTADO AMBIENTAL
-===================================================== */
-
-.state-card {
-
-    transition:
-        border-color 0.2s ease,
-        box-shadow 0.2s ease;
-}
-
-
-.state-led {
-
-    width: 32px;
-
-    height: 32px;
-
-    border-radius: 50%;
-
-    margin: 0 auto 20px;
-
-    transition:
-        background 0.2s ease,
-        box-shadow 0.2s ease;
-}
-
-
-.state-name {
-
-    font-family: 'Orbitron', sans-serif;
-
-    font-size: 2rem;
-
-    font-weight: 700;
-
-    margin-bottom: 15px;
-}
-
-
-.state-description {
-
-    color: #9aa0a6;
-
-    font-size: 1rem;
-}
-
-
-
-/* NORMAL */
-
-.state-card.normal {
-
-    border-color: #00e676;
-
-    box-shadow:
-        0 0 25px rgba(0, 230, 118, 0.15);
-}
-
-
-.state-card.normal .state-led {
-
-    background: #00e676;
-
-    box-shadow:
-        0 0 20px #00e676;
-}
-
-
-.state-card.normal .state-name {
-
-    color: #00e676;
-}
-
-
-
-/* ATENÇÃO */
-
-.state-card.atencao {
-
-    border-color: #ffea00;
-
-    box-shadow:
-        0 0 25px rgba(255, 234, 0, 0.15);
-}
-
-
-.state-card.atencao .state-led {
-
-    background: #ffea00;
-
-    box-shadow:
-        0 0 20px #ffea00;
-}
-
-
-.state-card.atencao .state-name {
-
-    color: #ffea00;
-}
-
-
-
-/* ALERTA */
-
-.state-card.alerta {
-
-    border-color: #ff1744;
-
-    box-shadow:
-        0 0 30px rgba(255, 23, 68, 0.25);
-}
-
-
-.state-card.alerta .state-led {
-
-    background: #ff1744;
-
-    box-shadow:
-        0 0 20px #ff1744;
-}
-
-
-.state-card.alerta .state-name {
-
-    color: #ff1744;
-}
-
-
-
-/* =====================================================
-   CONEXÃO
-===================================================== */
-
-footer {
-
-    margin-top: 50px;
-
-    color: #5f6368;
-
-    font-size: 0.95rem;
-
-    letter-spacing: 1px;
-}
-
-
-.online-indicator {
-
-    display: inline-block;
-
-    width: 10px;
-
-    height: 10px;
-
-    background: #ff1744;
-
-    border-radius: 50%;
-
-    margin-right: 6px;
-
-    box-shadow:
-        0 0 8px #ff1744;
-
-    transition:
-        background 0.15s,
-        box-shadow 0.15s;
-}
-
-
-.online-indicator.online {
-
-    background: #00e676;
-
-    box-shadow:
-        0 0 8px #00e676;
-}
-
-
-.online-indicator.offline {
-
-    background: #ff1744;
-
-    box-shadow:
-        0 0 8px #ff1744;
-}
-
-
-@keyframes blink {
-
-    0%, 100% {
-        opacity: 1;
+        stateDescription.innerText =
+            'Condições que exigem atenção';
     }
 
-    50% {
-        opacity: 0.35;
+
+    // =================================================
+    // ALERTA
+    // =================================================
+
+    else if (estado === 'ALERTA') {
+
+        stateCard.classList.add(
+            'alerta'
+        );
+
+        stateName.innerText =
+            'ALERTA';
+
+        stateDescription.innerText =
+            'Condições críticas detectadas';
     }
 }
 
 
-.blinking {
+// =====================================================
+// ATUALIZAR TELA
+// =====================================================
 
-    animation:
-        blink 1.5s infinite;
+function atualizarTela() {
+
+    atualizarTemperatura();
+
+    atualizarUmidade();
+
+    atualizarPIR();
+
+    atualizarEstado();
 }
 
 
+// =====================================================
+// APLICAR EVENTO DO FIREBASE
+// =====================================================
 
-/* =====================================================
-   RESPONSIVO
-===================================================== */
+function aplicarEventoFirebase(evento) {
 
-@media (max-width: 700px) {
+    try {
 
-    header h1 {
+        const pacote =
+            JSON.parse(evento.data);
 
-        font-size: 2.4rem;
+
+        const caminho =
+            pacote.path;
+
+
+        const valor =
+            pacote.data;
+
+
+        // =============================================
+        // PUT
+        // =============================================
+
+        if (
+            caminho === '/' ||
+            caminho === ''
+        ) {
+
+            if (
+                valor &&
+                typeof valor === 'object'
+            ) {
+
+                dados = {
+                    ...dados,
+                    ...valor
+                };
+            }
+        }
+
+
+        // =============================================
+        // PATCH / PUT EM CAMINHO ESPECÍFICO
+        // =============================================
+
+        else {
+
+            const partes =
+                caminho
+                    .split('/')
+                    .filter(Boolean);
+
+
+            let alvo =
+                dados;
+
+
+            for (
+                let i = 0;
+                i < partes.length - 1;
+                i++
+            ) {
+
+                const parte =
+                    partes[i];
+
+
+                if (
+                    typeof alvo[parte] !== 'object' ||
+                    alvo[parte] === null
+                ) {
+
+                    alvo[parte] = {};
+                }
+
+
+                alvo =
+                    alvo[parte];
+            }
+
+
+            const ultimaParte =
+                partes[partes.length - 1];
+
+
+            if (
+                ultimaParte
+            ) {
+
+                alvo[ultimaParte] =
+                    valor;
+            }
+        }
+
+
+        // =============================================
+        // RECEBEU DADOS
+        // =============================================
+
+        definirOnline();
+
+        atualizarTela();
+
     }
 
-    .subtitle {
+    catch (erro) {
 
-        font-size: 0.85rem;
-    }
-
-    .card {
-
-        width: 100%;
-
-        max-width: 330px;
+        console.error(
+            'Erro processando Firebase:',
+            erro
+        );
     }
 }
+
+
+// =====================================================
+// STREAM FIREBASE
+// =====================================================
+
+function conectarFirebase() {
+
+    console.log(
+        'Conectando ao Firebase em tempo real...'
+    );
+
+
+    const stream =
+        new EventSource(
+            firebaseURL
+        );
+
+
+    // ==============================================
+    // PUT
+    // ==============================================
+
+    stream.addEventListener(
+        'put',
+        aplicarEventoFirebase
+    );
+
+
+    // ==============================================
+    // PATCH
+    // ==============================================
+
+    stream.addEventListener(
+        'patch',
+        aplicarEventoFirebase
+    );
+
+
+    // ==============================================
+    // KEEP ALIVE
+    // ==============================================
+
+    stream.addEventListener(
+        'keep-alive',
+        () => {
+
+            console.log(
+                'Firebase: conexão ativa'
+            );
+        }
+    );
+
+
+    // ==============================================
+    // ERRO
+    // ==============================================
+
+    stream.onerror =
+        () => {
+
+            console.warn(
+                'Conexão com Firebase interrompida.'
+            );
+
+            stream.close();
+
+            setTimeout(
+                conectarFirebase,
+                1000
+            );
+        };
+}
+
+
+// =====================================================
+// VERIFICAR HEARTBEAT DA ESP32
+// =====================================================
+
+function verificarHardware() {
+
+    if (
+        typeof dados.ultimoContato !==
+        'number'
+    ) {
+
+        return;
+    }
+
+
+    const agora =
+        Date.now();
+
+
+    const atraso =
+        agora -
+        dados.ultimoContato;
+
+
+    // 7 segundos sem heartbeat
+    if (
+        atraso > 7000
+    ) {
+
+        definirOffline();
+
+    }
+
+    else {
+
+        definirOnline();
+    }
+}
+
+
+// =====================================================
+// VERIFICAÇÃO DO HARDWARE
+// =====================================================
+
+setInterval(
+    verificarHardware,
+    1000
+);
+
+
+// =====================================================
+// INICIAR
+// =====================================================
+
+conectarFirebase();
