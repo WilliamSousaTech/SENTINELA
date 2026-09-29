@@ -1,50 +1,216 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
+
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sentinela OS | Dashboard</title>
-    <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>SENTINELA OS | Dashboard</title>
+
+    <link
+        rel="stylesheet"
+        href="style.css"
+    >
+
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@500;700&display=swap"
+        rel="stylesheet"
+    >
+
 </head>
+
+
 <body>
+
     <div class="glow-bg"></div>
+
+
     <div class="container">
+
+
         <header>
-            <h1><span class="neon-text">SENTINELA</span> OS</h1>
-            <p class="subtitle">Monitoramento de Sensores em Tempo Real via Nuvem</p>
+
+            <h1>
+                <span class="neon-text">
+                    SENTINELA
+                </span>
+                OS
+            </h1>
+
+            <p class="subtitle">
+                Monitoramento de Sensores em Tempo Real via Nuvem
+            </p>
+
         </header>
 
+
         <main class="dashboard">
-            <!-- Temperatura -->
-            <div class="card" id="temp-card">
-                <div class="card-icon">🌡️</div>
-                <h3>Temperatura</h3>
-                <div class="valor" id="temp">-- <span class="unit">°C</span></div>
-                <div class="status-bar"><div class="fill temp-fill"></div></div>
+
+
+            <!-- TEMPERATURA -->
+
+            <div
+                class="card"
+                id="temp-card"
+            >
+
+                <div class="card-icon">
+                    🌡️
+                </div>
+
+                <h3>
+                    Temperatura
+                </h3>
+
+                <div
+                    class="valor"
+                    id="temp"
+                >
+                    --
+                    <span class="unit">
+                        °C
+                    </span>
+                </div>
+
+                <div class="status-bar">
+
+                    <div
+                        class="fill temp-fill"
+                    ></div>
+
+                </div>
+
             </div>
 
-            <!-- Umidade -->
-            <div class="card" id="umid-card">
-                <div class="card-icon">💧</div>
-                <h3>Umidade</h3>
-                <div class="valor" id="umid">-- <span class="unit">%</span></div>
-                <div class="status-bar"><div class="fill umid-fill"></div></div>
+
+
+            <!-- UMIDADE -->
+
+            <div
+                class="card"
+                id="umid-card"
+            >
+
+                <div class="card-icon">
+                    💧
+                </div>
+
+                <h3>
+                    Umidade
+                </h3>
+
+                <div
+                    class="valor"
+                    id="umid"
+                >
+                    --
+                    <span class="unit">
+                        %
+                    </span>
+                </div>
+
+                <div class="status-bar">
+
+                    <div
+                        class="fill umid-fill"
+                    ></div>
+
+                </div>
+
             </div>
 
-            <!-- Presença -->
-            <div class="card alert-card" id="pres-card">
-                <div class="card-icon">👁️</div>
-                <h3>Sensor PIR</h3>
-                <div class="valor" id="pres">Scanning...</div>
+
+
+            <!-- PIR -->
+
+            <div
+                class="card alert-card"
+                id="pres-card"
+            >
+
+                <div class="card-icon">
+                    👁️
+                </div>
+
+                <h3>
+                    Sensor PIR
+                </h3>
+
+                <div
+                    class="valor"
+                    id="pres"
+                >
+                    AGUARDANDO
+                </div>
+
                 <div class="radar"></div>
+
             </div>
+
+
+
+            <!-- ESTADO -->
+
+            <div
+                class="card state-card normal"
+                id="state-card"
+            >
+
+                <div class="state-led"></div>
+
+                <h3>
+                    Estado Ambiental
+                </h3>
+
+                <div
+                    class="state-name"
+                    id="state-name"
+                >
+                    NORMAL
+                </div>
+
+                <div
+                    class="state-description"
+                    id="state-description"
+                >
+                    Ambiente dentro dos parâmetros
+                </div>
+
+            </div>
+
+
         </main>
-        
+
+
         <footer>
-            <p>Status da Conexão: <span class="online-indicator"></span> <span id="footer-status">Ao vivo via Firebase do Google</span></p>
+
+            <p>
+
+                Status da ESP32:
+
+                <span
+                    class="online-indicator"
+                ></span>
+
+                <span id="footer-status">
+                    Aguardando conexão...
+                </span>
+
+            </p>
+
         </footer>
+
+
     </div>
+
+
     <script src="script.js"></script>
+
 </body>
+
 </html>
