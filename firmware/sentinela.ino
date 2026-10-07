@@ -4,14 +4,17 @@
 #include "DHT.h"
 
 // =====================================================
-// SENTINELA OS — FIRMWARE ESP32
+// SENTINELA OS — ESP32 + Firebase
 // =====================================================
 // /sensores  = estado atual + heartbeat
-// /historico = novas coletas para os gráficos
+// /historico = histórico das coletas
 //
-// NÃO publique suas credenciais reais no GitHub.
+// ATENÇÃO:
+// Preencha ssid e senha apenas no seu Arduino IDE local.
+// Não publique credenciais reais no GitHub.
 // =====================================================
 
+// ---------------- PINOS ----------------
 #define DHTPIN 23
 #define DHTTYPE DHT11
 
@@ -24,39 +27,28 @@
 
 DHT dht(DHTPIN, DHTTYPE);
 
-// =====================================================
-// WI-FI
-// =====================================================
-
+// ---------------- WI-FI ----------------
 const char* ssid = "COLOQUE_SUA_REDE";
 const char* senha = "COLOQUE_SUA_SENHA";
 
-// =====================================================
-// FIREBASE
-// =====================================================
-
-const char* sensoresUrl =
+// ---------------- FIREBASE ----------------
+const char* URL_SENSORES =
   "https://sentinela-a5028-default-rtdb.firebaseio.com/sensores.json?print=silent";
 
-const char* historicoUrl =
+const char* URL_HISTORICO =
   "https://sentinela-a5028-default-rtdb.firebaseio.com/historico.json?print=silent";
 
-// =====================================================
-// INTERVALOS
-// =====================================================
-
+// ---------------- INTERVALOS ----------------
 const unsigned long INTERVALO_DHT = 2000;
 const unsigned long INTERVALO_HISTORICO = 3000;
 const unsigned long INTERVALO_HEARTBEAT = 3000;
-const unsigned long INTERVALO_RECONEXAO_WIFI = 5000;
+const unsigned long INTERVALO_WIFI = 5000;
 
-// =====================================================
-// ESTADO
-// =====================================================
-
+// ---------------- ESTADO ----------------
 float temperatura = 0.0;
 float umidade = 0.0;
 
+int presencaAtual = 0;
 int ultimaPresenca = -1;
 
 String estadoAtual = "NORMAL";
@@ -66,35 +58,16 @@ unsigned long ultimoHistorico = 0;
 unsigned long ultimoHeartbeat = 0;
 unsigned long ultimaTentativaWiFi = 0;
 
-// =====================================================
-// PIR — INTERRUPÇÃO
-// =====================================================
+// ---------------- PIR ----------------
+volatile bool pirEvento = false;
 
-volatile bool pirMudou = false;
-
-void IRAM_ATTR interrupcaoPIR() {
-  pirMudou = true;
+void IRAM_ATTR isrPIR() {
+  pirEvento = true;
 }
 
-// =====================================================
-// BUZZER NÃO BLOQUEANTE
-// =====================================================
-
+// ---------------- BUZZER ----------------
 unsigned long ultimoBeep = 0;
 bool buzzerLigado = false;
-
-// =====================================================
-// CLIENTES HTTPS
-// =====================================================
-
-WiFiClientSecure sensorClient;
-WiFiClientSecure historicoClient;
-
-HTTPClient sensorHttp;
-HTTPClient historicoHttp;
-
-bool sensorHttpPreparado = false;
-bool historicoHttpPreparado = false;
 
 // =====================================================
 // CLASSIFICAÇÃO
@@ -120,32 +93,48 @@ String classificarAmbiente(float temp, float umid) {
 // LEDS
 // =====================================================
 
-void atualizarLEDs(const String& estado) {
+void atualizarLEDs() {
 
-  digitalWrite(LED_VERDE, estado == "NORMAL" ? HIGH : LOW);
-  digitalWrite(LED_AMARELO, estado == "ATENCAO" ? HIGH : LOW);
-  digitalWrite(LED_VERMELHO, estado == "ALERTA" ? HIGH : LOW);
+  digitalWrite(
+    LED_VERDE,
+    estadoAtual == "NORMAL" ? HIGH : LOW
+  );
+
+  digitalWrite(
+    LED_AMARELO,
+    estadoAtual == "ATENCAO" ? HIGH : LOW
+  );
+
+  digitalWrite(
+    LED_VERMELHO,
+    estadoAtual == "ALERTA" ? HIGH : LOW
+  );
 }
 
 // =====================================================
-// BUZZER
+// BUZZER NÃO BLOQUEANTE
 // =====================================================
 
 void atualizarBuzzer() {
 
   const unsigned long agora = millis();
 
+  // NORMAL
   if (estadoAtual == "NORMAL") {
+
     digitalWrite(BUZZERPIN, LOW);
     buzzerLigado = false;
+
     return;
   }
 
+  // ATENÇÃO
   if (estadoAtual == "ATENCAO") {
 
     if (!buzzerLigado) {
 
       if (agora - ultimoBeep >= 1000) {
+
         digitalWrite(BUZZERPIN, HIGH);
         buzzerLigado = true;
         ultimoBeep = agora;
@@ -154,6 +143,7 @@ void atualizarBuzzer() {
     else {
 
       if (agora - ultimoBeep >= 150) {
+
         digitalWrite(BUZZERPIN, LOW);
         buzzerLigado = false;
         ultimoBeep = agora;
@@ -163,6 +153,7 @@ void atualizarBuzzer() {
     return;
   }
 
+  // ALERTA
   if (estadoAtual == "ALERTA") {
 
     if (agora - ultimoBeep >= 80) {
@@ -179,119 +170,26 @@ void atualizarBuzzer() {
 }
 
 // =====================================================
-// ENCERRAR CLIENTES
-// =====================================================
-
-void encerrarFirebase() {
-
-  if (sensorHttpPreparado) {
-    sensorHttp.end();
-    sensorHttpPreparado = false;
-  }
-
-  if (historicoHttpPreparado) {
-    historicoHttp.end();
-    historicoHttpPreparado = false;
-  }
-}
-
-// =====================================================
-// PREPARAR /SENSORES
-// =====================================================
-
-bool prepararSensores() {
-
-  if (sensorHttpPreparado) {
-    return true;
-  }
-
-  sensorClient.setInsecure();
-
-  if (sensorHttp.begin(sensorClient, sensoresUrl)) {
-
-    sensorHttp.addHeader(
-      "Content-Type",
-      "application/json"
-    );
-
-    sensorHttp.addHeader(
-      "Connection",
-      "keep-alive"
-    );
-
-    sensorHttpPreparado = true;
-    return true;
-  }
-
-  Serial.println(
-    "Erro ao preparar Firebase /sensores."
-  );
-
-  return false;
-}
-
-// =====================================================
-// PREPARAR /HISTORICO
-// =====================================================
-
-bool prepararHistorico() {
-
-  if (historicoHttpPreparado) {
-    return true;
-  }
-
-  historicoClient.setInsecure();
-
-  if (historicoHttp.begin(
-    historicoClient,
-    historicoUrl
-  )) {
-
-    historicoHttp.addHeader(
-      "Content-Type",
-      "application/json"
-    );
-
-    historicoHttp.addHeader(
-      "Connection",
-      "keep-alive"
-    );
-
-    historicoHttpPreparado = true;
-    return true;
-  }
-
-  Serial.println(
-    "Erro ao preparar Firebase /historico."
-  );
-
-  return false;
-}
-
-// =====================================================
-// ATUALIZAR /SENSORES
+// HTTP PATCH -> /SENSORES
 // =====================================================
 
 bool enviarSensores(
-  bool incluirTemperatura,
-  bool incluirUmidade,
-  bool incluirPresenca,
-  bool incluirEstado,
-  bool incluirHeartbeat
+  bool enviarTemperatura,
+  bool enviarUmidade,
+  bool enviarPresenca,
+  bool enviarEstado,
+  bool enviarHeartbeat
 ) {
 
   if (WiFi.status() != WL_CONNECTED) {
     return false;
   }
 
-  if (!prepararSensores()) {
-    return false;
-  }
-
   String json = "{";
   bool primeiro = true;
 
-  if (incluirTemperatura) {
+  // Temperatura
+  if (enviarTemperatura) {
 
     json += "\"temperatura\":";
     json += String(temperatura, 1);
@@ -299,11 +197,10 @@ bool enviarSensores(
     primeiro = false;
   }
 
-  if (incluirUmidade) {
+  // Umidade
+  if (enviarUmidade) {
 
-    if (!primeiro) {
-      json += ",";
-    }
+    if (!primeiro) json += ",";
 
     json += "\"umidade\":";
     json += String(umidade, 1);
@@ -311,23 +208,21 @@ bool enviarSensores(
     primeiro = false;
   }
 
-  if (incluirPresenca) {
+  // Presença
+  if (enviarPresenca) {
 
-    if (!primeiro) {
-      json += ",";
-    }
+    if (!primeiro) json += ",";
 
     json += "\"presenca\":";
-    json += String(digitalRead(PIRPIN));
+    json += String(presencaAtual);
 
     primeiro = false;
   }
 
-  if (incluirEstado) {
+  // Estado
+  if (enviarEstado) {
 
-    if (!primeiro) {
-      json += ",";
-    }
+    if (!primeiro) json += ",";
 
     json += "\"estado\":\"";
     json += estadoAtual;
@@ -336,47 +231,73 @@ bool enviarSensores(
     primeiro = false;
   }
 
-  if (incluirHeartbeat) {
+  // Heartbeat
+  if (enviarHeartbeat) {
 
-    if (!primeiro) {
-      json += ",";
-    }
+    if (!primeiro) json += ",";
 
     json += "\"ultimoContato\":";
     json += "{\".sv\":\"timestamp\"}";
+
+    primeiro = false;
   }
 
   json += "}";
 
-  int codigo = sensorHttp.PATCH(json);
+  WiFiClientSecure client;
+  client.setInsecure();
 
-  if (codigo == 200 || codigo == 204) {
-    return true;
+  HTTPClient http;
+
+  if (!http.begin(client, URL_SENSORES)) {
+
+    Serial.println(
+      "ERRO: nao foi possivel abrir /sensores"
+    );
+
+    return false;
   }
 
-  Serial.print(
-    "Erro Firebase /sensores: HTTP "
+  http.addHeader(
+    "Content-Type",
+    "application/json"
   );
 
+  // IMPORTANTE:
+  // ESP32 core 3.3.11 usa PATCH(String payload)
+  int codigo = http.PATCH(json);
+
+  Serial.print(
+    "Firebase /sensores PATCH -> HTTP "
+  );
   Serial.println(codigo);
 
-  sensorHttp.end();
-  sensorHttpPreparado = false;
+  if (codigo > 0 && codigo != 200 && codigo != 204) {
 
-  return false;
+    Serial.print(
+      "Resposta/erro: "
+    );
+
+    Serial.println(
+      http.errorToString(codigo)
+    );
+  }
+
+  http.end();
+
+  return (
+    codigo == 200 ||
+    codigo == 204
+  );
 }
 
 // =====================================================
-// REGISTRAR HISTÓRICO
+// POST -> /HISTORICO
 // =====================================================
 
 bool registrarHistorico() {
 
   if (WiFi.status() != WL_CONNECTED) {
-    return false;
-  }
-
-  if (!prepararHistorico()) {
     return false;
   }
 
@@ -389,79 +310,127 @@ bool registrarHistorico() {
   json += String(umidade, 1);
 
   json += ",\"presenca\":";
-  json += String(digitalRead(PIRPIN));
+  json += String(presencaAtual);
 
   json += ",\"estado\":\"";
   json += estadoAtual;
   json += "\"";
 
-  // Timestamp do servidor Firebase.
-  // Não reinicia quando a ESP32 reinicia.
+  // Timestamp real do Firebase.
   json += ",\"timestamp\":";
   json += "{\".sv\":\"timestamp\"}";
 
   json += "}";
 
-  int codigo = historicoHttp.POST(json);
+  Serial.print(
+    "Enviando historico: "
+  );
 
-  if (codigo == 200 || codigo == 201) {
-    return true;
+  Serial.println(json);
+
+  WiFiClientSecure client;
+  client.setInsecure();
+
+  HTTPClient http;
+
+  if (!http.begin(client, URL_HISTORICO)) {
+
+    Serial.println(
+      "ERRO: nao foi possivel abrir /historico"
+    );
+
+    return false;
   }
 
+  http.addHeader(
+    "Content-Type",
+    "application/json"
+  );
+
+  int codigo =
+    http.POST(json);
+
   Serial.print(
-    "Erro Firebase /historico: HTTP "
+    "Firebase /historico POST -> HTTP "
   );
 
   Serial.println(codigo);
 
-  historicoHttp.end();
-  historicoHttpPreparado = false;
+  if (codigo > 0 && codigo != 200 && codigo != 201) {
 
-  return false;
+    Serial.print(
+      "Resposta/erro: "
+    );
+
+    Serial.println(
+      http.errorToString(codigo)
+    );
+  }
+
+  http.end();
+
+  return (
+    codigo == 200 ||
+    codigo == 201
+  );
 }
 
 // =====================================================
-// PROCESSAR PIR
+// PIR
 // =====================================================
 
 void processarPIR() {
 
-  bool houveMudanca = false;
+  bool evento = false;
 
   noInterrupts();
 
-  if (pirMudou) {
-    pirMudou = false;
-    houveMudanca = true;
+  if (pirEvento) {
+
+    pirEvento = false;
+    evento = true;
   }
 
   interrupts();
 
-  if (!houveMudanca) {
+  if (!evento) {
     return;
   }
 
-  const int presencaAtual =
+  int novaPresenca =
     digitalRead(PIRPIN);
 
-  if (presencaAtual == ultimaPresenca) {
+  if (novaPresenca ==
+      ultimaPresenca) {
     return;
   }
 
+  presencaAtual =
+    novaPresenca;
+
   ultimaPresenca =
-    presencaAtual;
+    novaPresenca;
 
   Serial.println();
-  Serial.println(">>> MUDANCA NO PIR <<<");
+
+  Serial.println(
+    ">>> MUDANCA NO PIR <<<"
+  );
 
   if (presencaAtual == HIGH) {
-    Serial.println(">>> MOVIMENTO DETECTADO <<<");
+
+    Serial.println(
+      ">>> MOVIMENTO DETECTADO <<<"
+    );
   }
   else {
-    Serial.println(">>> MOVIMENTO ENCERRADO <<<");
+
+    Serial.println(
+      ">>> MOVIMENTO ENCERRADO <<<"
+    );
   }
 
-  // Envia imediatamente a mudança.
+  // Atualização imediata do site.
   enviarSensores(
     false,
     false,
@@ -472,7 +441,7 @@ void processarPIR() {
 }
 
 // =====================================================
-// ATUALIZAR DHT11
+// DHT11
 // =====================================================
 
 void atualizarDHT() {
@@ -490,10 +459,10 @@ void atualizarDHT() {
   ultimoDHT =
     agora;
 
-  const float novaTemperatura =
+  float novaTemperatura =
     dht.readTemperature();
 
-  const float novaUmidade =
+  float novaUmidade =
     dht.readHumidity();
 
   if (
@@ -515,34 +484,29 @@ void atualizarDHT() {
   umidade =
     novaUmidade;
 
-  const String novoEstado =
+  String novoEstado =
     classificarAmbiente(
       temperatura,
       umidade
     );
 
-  const bool mudou =
+  bool estadoMudou =
     novoEstado != estadoAtual;
 
   estadoAtual =
     novoEstado;
 
-  atualizarLEDs(
-    estadoAtual
-  );
+  atualizarLEDs();
 
-  if (mudou) {
-
-    ultimoBeep =
-      millis();
-
-    buzzerLigado =
-      false;
+  if (estadoMudou) {
 
     digitalWrite(
       BUZZERPIN,
       LOW
     );
+
+    buzzerLigado = false;
+    ultimoBeep = millis();
   }
 
   Serial.println();
@@ -579,10 +543,10 @@ void atualizarDHT() {
   );
 
   Serial.print(
-    "Presença: "
+    "Presenca: "
   );
   Serial.println(
-    digitalRead(PIRPIN) == HIGH
+    presencaAtual == HIGH
       ? "DETECTADO"
       : "VAZIO"
   );
@@ -598,7 +562,7 @@ void atualizarDHT() {
     "================================"
   );
 
-  // Estado atual.
+  // Atualiza painel atual.
   enviarSensores(
     true,
     true,
@@ -609,7 +573,7 @@ void atualizarDHT() {
 }
 
 // =====================================================
-// VERIFICAR HISTÓRICO
+// HISTÓRICO
 // =====================================================
 
 void verificarHistorico() {
@@ -627,11 +591,7 @@ void verificarHistorico() {
   ultimoHistorico =
     agora;
 
-  if (registrarHistorico()) {
-    Serial.println(
-      "Histórico registrado."
-    );
-  }
+  registrarHistorico();
 }
 
 // =====================================================
@@ -653,6 +613,7 @@ void verificarHeartbeat() {
   ultimoHeartbeat =
     agora;
 
+  // Atualiza SOMENTE o heartbeat.
   enviarSensores(
     false,
     false,
@@ -680,7 +641,7 @@ void verificarWiFi() {
 
   if (
     agora - ultimaTentativaWiFi <
-    INTERVALO_RECONEXAO_WIFI
+    INTERVALO_WIFI
   ) {
     return;
   }
@@ -692,12 +653,9 @@ void verificarWiFi() {
   Serial.println(
     "Wi-Fi desconectado."
   );
-
   Serial.println(
     "Tentando reconectar..."
   );
-
-  encerrarFirebase();
 
   WiFi.disconnect();
   WiFi.begin(
@@ -716,10 +674,6 @@ void setup() {
     115200
   );
 
-  // ---------------------------------------------------
-  // SENSORES
-  // ---------------------------------------------------
-
   dht.begin();
 
   pinMode(
@@ -727,62 +681,54 @@ void setup() {
     INPUT
   );
 
-  // Detecta subida e descida do PIR
-  // sem bloquear o loop principal.
+  pinMode(
+    BUZZERPIN,
+    OUTPUT
+  );
+
+  pinMode(
+    LED_VERDE,
+    OUTPUT
+  );
+
+  pinMode(
+    LED_AMARELO,
+    OUTPUT
+  );
+
+  pinMode(
+    LED_VERMELHO,
+    OUTPUT
+  );
+
+  digitalWrite(
+    BUZZERPIN,
+    LOW
+  );
+
+  digitalWrite(
+    LED_VERDE,
+    LOW
+  );
+
+  digitalWrite(
+    LED_AMARELO,
+    LOW
+  );
+
+  digitalWrite(
+    LED_VERMELHO,
+    LOW
+  );
+
+  // PIR sem bloqueio.
   attachInterrupt(
     digitalPinToInterrupt(PIRPIN),
-    interrupcaoPIR,
+    isrPIR,
     CHANGE
   );
 
-  // ---------------------------------------------------
-  // SAÍDAS
-  // ---------------------------------------------------
-
-  pinMode(
-    BUZZERPIN,
-    OUTPUT
-  );
-
-  pinMode(
-    LED_VERDE,
-    OUTPUT
-  );
-
-  pinMode(
-    LED_AMARELO,
-    OUTPUT
-  );
-
-  pinMode(
-    LED_VERMELHO,
-    OUTPUT
-  );
-
-  digitalWrite(
-    BUZZERPIN,
-    LOW
-  );
-
-  digitalWrite(
-    LED_VERDE,
-    LOW
-  );
-
-  digitalWrite(
-    LED_AMARELO,
-    LOW
-  );
-
-  digitalWrite(
-    LED_VERMELHO,
-    LOW
-  );
-
-  // ---------------------------------------------------
-  // WIFI
-  // ---------------------------------------------------
-
+  // Wi-Fi.
   WiFi.mode(
     WIFI_STA
   );
@@ -829,32 +775,26 @@ void setup() {
     WiFi.localIP()
   );
 
-  // ---------------------------------------------------
-  // PIR INICIAL
-  // ---------------------------------------------------
+  // Estado inicial PIR.
+  presencaAtual =
+    digitalRead(PIRPIN);
 
   ultimaPresenca =
-    digitalRead(PIRPIN);
+    presencaAtual;
 
   Serial.print(
     "PIR inicial: "
   );
 
   Serial.println(
-    ultimaPresenca
+    presencaAtual
   );
 
-  // ---------------------------------------------------
-  // PRIMEIRA LEITURA DHT
-  // ---------------------------------------------------
-
+  // Primeira leitura do DHT.
   ultimoDHT =
     INTERVALO_DHT;
 
-  // ---------------------------------------------------
-  // PRIMEIRO CONTATO
-  // ---------------------------------------------------
-
+  // Primeiro heartbeat.
   enviarSensores(
     false,
     false,
@@ -865,7 +805,7 @@ void setup() {
 
   Serial.println();
   Serial.println(
-    "Sistema SENTINELA iniciado."
+    "SENTINELA iniciado."
   );
 }
 
