@@ -2,8 +2,9 @@ const FIREBASE_BASE = "https://sentinela-a5028-default-rtdb.firebaseio.com";
 const SENSOR_URL = `${FIREBASE_BASE}/sensores.json`;
 const HISTORY_URL = `${FIREBASE_BASE}/historico.json`;
 
-const OFFLINE_AFTER_MS = 7000;
-const HISTORY_LIMIT_DEFAULT = 15;
+const OFFLINE_AFTER_MS = 9000;
+const HISTORY_POLL_MS = 2000;
+const SENSOR_POLL_MS = 3000;
 
 let state = {
   temperatura: null,
@@ -14,10 +15,13 @@ let state = {
 };
 
 let hardwareOnline = false;
+let lastLiveActivity = 0;
+let lastHistoryKey = null;
 let historyCache = [];
-let historyLimit = HISTORY_LIMIT_DEFAULT;
+let historyLimit = 15;
 let temperatureChart = null;
 let humidityChart = null;
+let primeiraCargaHistorico = true;
 
 const $ = (id) => document.getElementById(id);
 
@@ -40,6 +44,10 @@ function formatarData(timestamp) {
   });
 }
 
+function formatarUltimoContato(timestamp) {
+  return formatarData(timestamp);
+}
+
 function calcularEstado(temp, umid) {
   if (Number(temp) > 35 || Number(umid) < 30) return "ALERTA";
   if (
@@ -47,6 +55,29 @@ function calcularEstado(temp, umid) {
     (Number(umid) >= 30 && Number(umid) < 40)
   ) return "ATENCAO";
   return "NORMAL";
+}
+
+function registrarAtividadeAoVivo(registro, origem) {
+  if (!registro || typeof registro !== "object") return;
+
+  const temp = Number(registro.temperatura);
+  const umid = Number(registro.umidade);
+  const pres = Number(registro.presenca);
+
+  if (Number.isFinite(temp)) state.temperatura = temp;
+  if (Number.isFinite(umid)) state.umidade = umid;
+  if (Number.isFinite(pres)) state.presenca = pres;
+
+  const estado = normalizarEstado(registro.estado);
+  if (estado) state.estado = estado;
+
+  state.ultimoContato = Date.now();
+  lastLiveActivity = Date.now();
+
+  atualizarConexao(true);
+  atualizarPainel();
+
+  console.debug("Atividade do circuito:", origem, registro);
 }
 
 function atualizarConexao(online) {
@@ -57,13 +88,23 @@ function atualizarConexao(online) {
 
   pill.classList.toggle("online", online);
   pill.classList.toggle("offline", !online);
-  label.textContent = online ? "HARDWARE ONLINE" : "HARDWARE OFFLINE";
 
-  $("offline-panel").classList.toggle("is-hidden", online);
-  $("live-content").classList.toggle("is-hidden", !online);
+  label.textContent = online
+    ? "HARDWARE ONLINE"
+    : "HARDWARE OFFLINE";
+
+  $("offline-panel").classList.toggle(
+    "is-hidden",
+    online
+  );
+
+  $("live-content").classList.toggle(
+    "is-hidden",
+    !online
+  );
 
   $("footer-status").textContent = online
-    ? "ESP32 comunicando com o Firebase em tempo real"
+    ? "ESP32 comunicando com o Firebase"
     : "Nenhuma leitura é exibida enquanto o hardware estiver offline";
 }
 
@@ -73,178 +114,304 @@ function atualizarPainel() {
   const temp = Number(state.temperatura);
   const umid = Number(state.umidade);
   const pres = Number(state.presenca) === 1;
-  const estado = normalizarEstado(state.estado) || calcularEstado(temp, umid);
 
-  $("temperature-value").textContent = Number.isFinite(temp) ? temp.toFixed(1) : "—";
-  $("humidity-value").textContent = Number.isFinite(umid) ? umid.toFixed(1) : "—";
+  const estado =
+    normalizarEstado(state.estado) ||
+    (Number.isFinite(temp) && Number.isFinite(umid)
+      ? calcularEstado(temp, umid)
+      : null);
+
+  $("temperature-value").textContent =
+    Number.isFinite(temp) ? temp.toFixed(1) : "—";
+
+  $("humidity-value").textContent =
+    Number.isFinite(umid) ? umid.toFixed(1) : "—";
 
   $("temperature-range").textContent =
-    temp > 35 ? "ALERTA" : temp >= 32 ? "ATENÇÃO" : "NORMAL";
+    Number.isFinite(temp)
+      ? temp > 35
+        ? "ALERTA"
+        : temp >= 32
+          ? "ATENÇÃO"
+          : "NORMAL"
+      : "—";
+
   $("humidity-range").textContent =
-    umid < 30 ? "ALERTA" : umid < 40 ? "ATENÇÃO" : "NORMAL";
+    Number.isFinite(umid)
+      ? umid < 30
+        ? "ALERTA"
+        : umid < 40
+          ? "ATENÇÃO"
+          : "NORMAL"
+      : "—";
 
   $("temperature-bar").style.width =
     `${Math.max(0, Math.min(100, temp * 2))}%`;
+
   $("humidity-bar").style.width =
     `${Math.max(0, Math.min(100, umid))}%`;
 
   const presenceCard = $("presence-card");
-  presenceCard.classList.toggle("detected", pres);
-  $("presence-value").textContent = pres ? "DETECTADO" : "VAZIO";
-  $("presence-since").textContent = pres ? "movimento ativo" : "sem movimento";
 
-  $("state-chip").textContent = estado === "ATENCAO" ? "ATENÇÃO" : estado;
-  $("state-chip").className = `state-chip ${estado.toLowerCase()}`;
+  presenceCard.classList.toggle(
+    "detected",
+    pres
+  );
 
-  $("state-card").className = `state-card ${estado.toLowerCase()}`;
-  $("state-title").textContent = estado === "ATENCAO" ? "ATENÇÃO" : estado;
-  $("state-description").textContent =
-    estado === "NORMAL"
-      ? "Condições dentro da faixa definida pelo SENTINELA."
-      : estado === "ATENCAO"
-      ? "Uma das variáveis entrou na faixa de atenção."
-      : "Temperatura ou umidade atingiu a faixa de alerta.";
+  $("presence-value").textContent =
+    pres ? "DETECTADO" : "VAZIO";
 
-  document.querySelectorAll(".led").forEach((led) => {
-    led.classList.toggle(
-      "active-normal",
-      led.dataset.led === "NORMAL" && estado === "NORMAL"
-    );
-    led.classList.toggle(
-      "active-atencao",
-      led.dataset.led === "ATENCAO" && estado === "ATENCAO"
-    );
-    led.classList.toggle(
-      "active-alerta",
-      led.dataset.led === "ALERTA" && estado === "ALERTA"
-    );
-  });
+  $("presence-since").textContent =
+    pres ? "movimento ativo" : "sem movimento";
 
-  $("last-seen").textContent = formatarData(state.ultimoContato);
-}
+  if (estado) {
 
-function processarSensorData(payload) {
-  if (!payload || typeof payload !== "object") return;
+    $("state-chip").textContent =
+      estado === "ATENCAO"
+        ? "ATENÇÃO"
+        : estado;
 
-  for (const [key, value] of Object.entries(payload)) {
-    if (
-      ["temperatura", "umidade", "presenca", "estado", "ultimoContato"].includes(key)
-    ) {
-      state[key] = value;
-    }
+    $("state-chip").className =
+      `state-chip ${estado.toLowerCase()}`;
+
+    $("state-card").className =
+      `state-card ${estado.toLowerCase()}`;
+
+    $("state-title").textContent =
+      estado === "ATENCAO"
+        ? "ATENÇÃO"
+        : estado;
+
+    $("state-description").textContent =
+      estado === "NORMAL"
+        ? "Condições dentro da faixa definida pelo SENTINELA."
+        : estado === "ATENCAO"
+          ? "Uma das variáveis entrou na faixa de atenção."
+          : "Temperatura ou umidade atingiu a faixa de alerta.";
+
+    document
+      .querySelectorAll(".led")
+      .forEach((led) => {
+
+        led.classList.toggle(
+          "active-normal",
+          led.dataset.led === "NORMAL" &&
+          estado === "NORMAL"
+        );
+
+        led.classList.toggle(
+          "active-atencao",
+          led.dataset.led === "ATENCAO" &&
+          estado === "ATENCAO"
+        );
+
+        led.classList.toggle(
+          "active-alerta",
+          led.dataset.led === "ALERTA" &&
+          estado === "ALERTA"
+        );
+      });
   }
 
-  atualizarConexao(true);
-  atualizarPainel();
+  $("last-seen").textContent =
+    formatarUltimoContato(state.ultimoContato);
 }
 
-function conectarStreamSensores() {
-  const source = new EventSource(SENSOR_URL);
+async function carregarSensores() {
 
-  source.addEventListener("put", (event) => {
-    try {
-      const body = JSON.parse(event.data);
-      const path = body.path || "/";
-
-      if (path === "/") {
-        processarSensorData(body.data);
-      } else {
-        const key = path.replace(/^//, "");
-        state[key] = body.data;
-        atualizarConexao(true);
-        atualizarPainel();
-      }
-    } catch (error) {
-      console.error("Erro no evento put:", error);
-    }
-  });
-
-  source.addEventListener("patch", (event) => {
-    try {
-      const body = JSON.parse(event.data);
-      const path = body.path || "/";
-
-      if (path === "/") {
-        processarSensorData(body.data);
-      } else {
-        const key = path.replace(/^//, "");
-        state[key] = body.data;
-        atualizarConexao(true);
-        atualizarPainel();
-      }
-    } catch (error) {
-      console.error("Erro no evento patch:", error);
-    }
-  });
-
-  source.onerror = () => {
-    console.warn("Stream Firebase temporariamente indisponível.");
-  };
-}
-
-async function carregarEstadoInicial() {
   try {
-    const response = await fetch(SENSOR_URL, { cache: "no-store" });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-    const dados = await response.json();
-    if (dados) processarSensorData(dados);
+    const response =
+      await fetch(
+        SENSOR_URL,
+        { cache: "no-store" }
+      );
+
+    if (!response.ok) {
+      throw new Error(
+        `HTTP ${response.status}`
+      );
+    }
+
+    const dados =
+      await response.json();
+
+    if (!dados) return;
+
+    const contato =
+      Number(dados.ultimoContato);
+
+    // Heartbeat real do firmware novo.
+    if (
+      Number.isFinite(contato) &&
+      contato > 1000000000000
+    ) {
+
+      const idade =
+        Date.now() - contato;
+
+      if (idade <= OFFLINE_AFTER_MS) {
+
+        state =
+          {
+            ...state,
+            ...dados,
+            ultimoContato: contato
+          };
+
+        lastLiveActivity =
+          Date.now();
+
+        atualizarConexao(true);
+        atualizarPainel();
+      }
+    }
+
   } catch (error) {
-    console.error("Não foi possível carregar sensores:", error);
+
+    console.warn(
+      "Falha ao consultar /sensores:",
+      error
+    );
   }
 }
 
 async function carregarHistorico() {
+
   try {
-    const response = await fetch(HISTORY_URL, { cache: "no-store" });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-    const dados = await response.json();
+    const response =
+      await fetch(
+        HISTORY_URL,
+        { cache: "no-store" }
+      );
 
-    if (!dados || typeof dados !== "object") {
+    if (!response.ok) {
+      throw new Error(
+        `HTTP ${response.status}`
+      );
+    }
+
+    const dados =
+      await response.json();
+
+    if (
+      !dados ||
+      typeof dados !== "object"
+    ) {
+
       historyCache = [];
-      $("history-empty").classList.remove("is-hidden");
+
+      $("history-empty")
+        .classList.remove("is-hidden");
+
       renderCharts();
       return;
     }
 
-    historyCache = Object.entries(dados)
-      .map(([key, record]) => ({
-        key,
-        ...(record || {}),
-        timestamp: Number(record?.timestamp ?? record?.ultimoContato ?? 0),
-      }))
-      .filter(
-        (record) =>
-          Number.isFinite(Number(record.temperatura)) &&
-          Number.isFinite(Number(record.umidade))
-      )
-      .sort((a, b) => a.timestamp - b.timestamp);
+    historyCache =
+      Object.entries(dados)
+        .map(
+          ([key, record]) => ({
+            key,
+            ...(record || {}),
+            timestamp:
+              Number(
+                record?.timestamp ?? 0
+              ),
+          })
+        )
+        .filter(
+          (record) =>
+            Number.isFinite(
+              Number(record.temperatura)
+            ) &&
+            Number.isFinite(
+              Number(record.umidade)
+            )
+        )
+        .sort(
+          (a, b) =>
+            a.timestamp - b.timestamp
+        );
 
-    $("history-empty").classList.toggle("is-hidden", historyCache.length > 0);
+    $("history-empty")
+      .classList.toggle(
+        "is-hidden",
+        historyCache.length > 0
+      );
+
     renderCharts();
+
+    const ultima =
+      historyCache[
+        historyCache.length - 1
+      ];
+
+    if (!ultima) return;
+
+    // O primeiro GET apenas carrega o histórico.
+    // A atividade ao vivo passa a ser reconhecida
+    // quando chegar uma nova coleta depois disso.
+    if (primeiraCargaHistorico) {
+
+      lastHistoryKey =
+        ultima.key;
+
+      primeiraCargaHistorico =
+        false;
+
+      return;
+    }
+
+    if (
+      ultima.key !==
+      lastHistoryKey
+    ) {
+
+      lastHistoryKey =
+        ultima.key;
+
+      registrarAtividadeAoVivo(
+        ultima,
+        "historico"
+      );
+    }
+
   } catch (error) {
-    console.error("Erro ao carregar histórico:", error);
-    historyCache = [];
-    $("history-empty").classList.remove("is-hidden");
-    renderCharts();
+
+    console.error(
+      "Erro ao carregar histórico:",
+      error
+    );
   }
 }
 
-function criarOpcoesGrafico(label, unit) {
+function criarOpcoesGrafico(
+  label,
+  unit
+) {
+
   return {
     responsive: true,
     maintainAspectRatio: false,
-    interaction: { mode: "index", intersect: false },
+    interaction: {
+      mode: "index",
+      intersect: false
+    },
     plugins: {
-      legend: { display: false },
+      legend: {
+        display: false
+      },
       tooltip: {
         displayColors: false,
         callbacks: {
           label: (ctx) =>
-            `${label}: ${Number(ctx.parsed.y).toFixed(1)} ${unit}`,
-        },
-      },
+            `${label}: ${Number(
+              ctx.parsed.y
+            ).toFixed(1)} ${unit}`
+        }
+      }
     },
     scales: {
       x: {
@@ -253,158 +420,340 @@ function criarOpcoesGrafico(label, unit) {
           maxRotation: 0,
           autoSkip: true,
           maxTicksLimit: 8,
-          font: { family: "DM Mono" },
+          font: {
+            family: "DM Mono"
+          }
         },
-        grid: { color: "rgba(117,135,122,.08)" },
+        grid: {
+          color:
+            "rgba(117,135,122,.08)"
+        }
       },
       y: {
-        ticks: { color: "#75877a", font: { family: "DM Mono" } },
-        grid: { color: "rgba(117,135,122,.08)" },
-      },
-    },
+        ticks: {
+          color: "#75877a",
+          font: {
+            family: "DM Mono"
+          }
+        },
+        grid: {
+          color:
+            "rgba(117,135,122,.08)"
+        }
+      }
+    }
   };
 }
 
 function prepararPontos() {
-  const recortes = historyCache.slice(-historyLimit);
+
+  const recortes =
+    historyCache.slice(
+      -historyLimit
+    );
 
   return {
-    labels: recortes.map((r, i) =>
-      Number.isFinite(r.timestamp) && r.timestamp > 0
-        ? formatarData(r.timestamp)
-        : `Coleta ${i + 1}`
-    ),
-    temps: recortes.map((r) => Number(r.temperatura)),
-    umids: recortes.map((r) => Number(r.umidade)),
+
+    labels:
+      recortes.map(
+        (r, i) => {
+
+          // Timestamp antigo baseado em millis()
+          // não representa horário real.
+          if (
+            Number.isFinite(
+              r.timestamp
+            ) &&
+            r.timestamp > 1000000000000
+          ) {
+
+            return formatarData(
+              r.timestamp
+            );
+          }
+
+          return `Coleta ${i + 1}`;
+        }
+      ),
+
+    temps:
+      recortes.map(
+        (r) =>
+          Number(r.temperatura)
+      ),
+
+    umids:
+      recortes.map(
+        (r) =>
+          Number(r.umidade)
+      )
   };
 }
 
 function renderCharts() {
-  const { labels, temps, umids } = prepararPontos();
+
+  const {
+    labels,
+    temps,
+    umids
+  } = prepararPontos();
 
   const datasetBase = {
     borderWidth: 2,
     pointRadius: 0,
     pointHoverRadius: 4,
-    tension: 0.32,
-    fill: true,
+    tension: .32,
+    fill: true
   };
 
   if (!temperatureChart) {
-    temperatureChart = new Chart($("temperatureChart"), {
-      type: "line",
-      data: {
-        labels,
-        datasets: [
-          {
-            ...datasetBase,
-            label: "Temperatura",
-            data: temps,
-            borderColor: "#27e27b",
-            backgroundColor: "rgba(39,226,123,.10)",
+
+    temperatureChart =
+      new Chart(
+        $("temperatureChart"),
+        {
+          type: "line",
+
+          data: {
+            labels,
+
+            datasets: [
+              {
+                ...datasetBase,
+                label: "Temperatura",
+                data: temps,
+                borderColor:
+                  "#27e27b",
+                backgroundColor:
+                  "rgba(39,226,123,.10)"
+              }
+            ]
           },
-        ],
-      },
-      options: criarOpcoesGrafico("Temperatura", "°C"),
-    });
+
+          options:
+            criarOpcoesGrafico(
+              "Temperatura",
+              "°C"
+            )
+        }
+      );
+
   } else {
-    temperatureChart.data.labels = labels;
-    temperatureChart.data.datasets[0].data = temps;
-    temperatureChart.update("none");
+
+    temperatureChart.data.labels =
+      labels;
+
+    temperatureChart
+      .data
+      .datasets[0]
+      .data =
+        temps;
+
+    temperatureChart.update(
+      "none"
+    );
   }
 
   if (!humidityChart) {
-    humidityChart = new Chart($("humidityChart"), {
-      type: "line",
-      data: {
-        labels,
-        datasets: [
-          {
-            ...datasetBase,
-            label: "Umidade",
-            data: umids,
-            borderColor: "#58a8ff",
-            backgroundColor: "rgba(88,168,255,.08)",
+
+    humidityChart =
+      new Chart(
+        $("humidityChart"),
+        {
+          type: "line",
+
+          data: {
+            labels,
+
+            datasets: [
+              {
+                ...datasetBase,
+                label: "Umidade",
+                data: umids,
+                borderColor:
+                  "#58a8ff",
+                backgroundColor:
+                  "rgba(88,168,255,.08)"
+              }
+            ]
           },
-        ],
-      },
-      options: criarOpcoesGrafico("Umidade", "%"),
-    });
+
+          options:
+            criarOpcoesGrafico(
+              "Umidade",
+              "%"
+            )
+        }
+      );
+
   } else {
-    humidityChart.data.labels = labels;
-    humidityChart.data.datasets[0].data = umids;
-    humidityChart.update("none");
+
+    humidityChart.data.labels =
+      labels;
+
+    humidityChart
+      .data
+      .datasets[0]
+      .data =
+        umids;
+
+    humidityChart.update(
+      "none"
+    );
   }
 }
 
 function verificarHardware() {
-  const contato = Number(state.ultimoContato);
 
-  // Sem heartbeat, não mostramos valores antigos.
-  const online =
-    Number.isFinite(contato) &&
-    contato > 0 &&
-    Date.now() - contato <= OFFLINE_AFTER_MS;
+  if (
+    !lastLiveActivity ||
+    Date.now() -
+      lastLiveActivity >
+      OFFLINE_AFTER_MS
+  ) {
 
-  atualizarConexao(online);
+    atualizarConexao(false);
 
-  if (!online) {
-    $("state-chip").textContent = "SEM DADOS";
-    $("state-chip").className = "state-chip";
-    $("last-seen").textContent = contato > 0 ? formatarData(contato) : "—";
+    $("state-chip").textContent =
+      "SEM DADOS";
+
+    $("state-chip").className =
+      "state-chip";
+
+    $("last-seen").textContent =
+      state.ultimoContato
+        ? formatarUltimoContato(
+            state.ultimoContato
+          )
+        : "—";
   }
 }
 
 function configurarNavegacao() {
-  const links = document.querySelectorAll(".nav-link");
+
+  const links =
+    document.querySelectorAll(
+      ".nav-link"
+    );
+
   const sections = [
-    document.querySelector("#monitor"),
-    document.querySelector("#historico"),
+    document.querySelector(
+      "#monitor"
+    ),
+    document.querySelector(
+      "#historico"
+    )
   ];
 
-  const observer = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        if (!entry.isIntersecting) return;
-        links.forEach((link) =>
-          link.classList.toggle(
-            "active",
-            link.getAttribute("href") === `#${entry.target.id}`
-          )
-        );
-      });
-    },
-    { threshold: 0.35 }
-  );
+  const observer =
+    new IntersectionObserver(
+      (entries) => {
 
-  sections.forEach((section) => section && observer.observe(section));
+        entries.forEach(
+          (entry) => {
+
+            if (
+              !entry.isIntersecting
+            ) {
+              return;
+            }
+
+            links.forEach(
+              (link) => {
+
+                link.classList.toggle(
+                  "active",
+                  link.getAttribute(
+                    "href"
+                  ) ===
+                    `#${entry.target.id}`
+                );
+              }
+            );
+          }
+        );
+      },
+      {
+        threshold: .35
+      }
+    );
+
+  sections.forEach(
+    (section) =>
+      section &&
+      observer.observe(section)
+  );
 }
 
 function configurarFiltros() {
-  document.querySelectorAll(".filter-btn").forEach((button) => {
-    button.addEventListener("click", () => {
-      document
-        .querySelectorAll(".filter-btn")
-        .forEach((b) => b.classList.remove("active"));
-      button.classList.add("active");
-      historyLimit = Number(button.dataset.range);
-      renderCharts();
-    });
-  });
+
+  document
+    .querySelectorAll(
+      ".filter-btn"
+    )
+    .forEach(
+      (button) => {
+
+        button.addEventListener(
+          "click",
+          () => {
+
+            document
+              .querySelectorAll(
+                ".filter-btn"
+              )
+              .forEach(
+                (b) =>
+                  b.classList.remove(
+                    "active"
+                  )
+              );
+
+            button.classList.add(
+              "active"
+            );
+
+            historyLimit =
+              Number(
+                button.dataset.range
+              );
+
+            renderCharts();
+          }
+        );
+      }
+    );
 }
 
-window.addEventListener("load", async () => {
-  configurarNavegacao();
-  configurarFiltros();
+window.addEventListener(
+  "load",
+  async () => {
 
-  atualizarConexao(false);
-  verificarHardware();
+    configurarNavegacao();
+    configurarFiltros();
 
-  await carregarEstadoInicial();
-  await carregarHistorico();
+    atualizarConexao(false);
+    verificarHardware();
 
-  conectarStreamSensores();
+    await carregarSensores();
+    await carregarHistorico();
 
-  setInterval(verificarHardware, 1000);
-  setInterval(carregarHistorico, 10000);
-});
+    // Histórico é usado como fallback de
+    // atividade para o firmware antigo.
+    setInterval(
+      carregarHistorico,
+      HISTORY_POLL_MS
+    );
+
+    // Heartbeat/estado do firmware novo.
+    setInterval(
+      carregarSensores,
+      SENSOR_POLL_MS
+    );
+
+    setInterval(
+      verificarHardware,
+      1000
+    );
+  }
+);
