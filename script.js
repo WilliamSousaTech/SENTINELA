@@ -309,6 +309,9 @@ async function carregarHistorico() {
       return;
     }
 
+    // Mantemos a ordem de inserção do Firebase.
+    // Isso é importante porque o firmware antigo usa millis()
+    // como timestamp e millis() zera quando a ESP32 reinicia.
     historyCache =
       Object.entries(dados)
         .map(
@@ -329,10 +332,6 @@ async function carregarHistorico() {
             Number.isFinite(
               Number(record.umidade)
             )
-        )
-        .sort(
-          (a, b) =>
-            a.timestamp - b.timestamp
         );
 
     $("history-empty")
