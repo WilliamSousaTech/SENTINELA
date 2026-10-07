@@ -1,67 +1,190 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sentinela OS | Histórico e Relatório</title>
-    <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
-    <!-- Biblioteca Chart.js para o Gráfico de Linha de Tendência Temporal -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#08110c">
+  <meta name="description" content="SENTINELA OS — monitoramento ambiental IoT em tempo real.">
+  <title>SENTINELA OS | Monitoramento Ambiental</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0"></script>
 </head>
 <body>
-    <div class="glow-bg"></div>
-    <div class="container">
-        <header>
-            <h1><span class="neon-text">SENTINELA</span> OS</h1>
-            <p class="subtitle">Protótipo IoT de Monitoramento Ambiental e Histórico</p>
-            
-            <div class="led-panel">
-                <span>Estado Atual:</span>
-                <div class="led-badge" id="badge-normal">NORMAL</div>
-                <div class="led-badge" id="badge-atencao">ATENÇÃO</div>
-                <div class="led-badge" id="badge-alerta">ALERTA</div>
-            </div>
-        </header>
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
 
-        <main class="dashboard">
-            <!-- Temperatura -->
-            <div class="card">
-                <div class="card-icon">🌡️</div>
-                <h3>Temperatura</h3>
-                <div class="valor" id="temp">-- <span class="unit">°C</span></div>
-                <div class="status-bar"><div class="fill temp-fill"></div></div>
-            </div>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#monitor">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span>
+          <strong>SENTINELA</strong>
+          <small>OS • MONITORAMENTO IOT</small>
+        </span>
+      </a>
 
-            <!-- Umidade -->
-            <div class="card">
-                <div class="card-icon">💧</div>
-                <h3>Umidade</h3>
-                <div class="valor" id="umid">-- <span class="unit">%</span></div>
-                <div class="status-bar"><div class="fill umid-fill"></div></div>
-            </div>
+      <nav class="nav" aria-label="Navegação principal">
+        <a class="nav-link active" href="#monitor">Monitoramento</a>
+        <a class="nav-link" href="#historico">Gráficos</a>
+      </nav>
 
-            <!-- Presença -->
-            <div class="card alert-card" id="pres-card">
-                <div class="card-icon">👁️</div>
-                <h3>Sensor PIR</h3>
-                <div class="valor" id="pres">Scanning...</div>
-                <div class="radar"></div>
-            </div>
+      <div class="connection-pill" id="connection-pill" aria-live="polite">
+        <span class="status-dot"></span>
+        <span id="connection-label">AGUARDANDO HARDWARE</span>
+      </div>
+    </header>
 
-            <!-- CARD DO GRÁFICO DE TENDÊNCIA TEMPORAL -->
-            <div class="card chart-card">
-                <h3>📊 Gráfico de Tendência Temporal (Banco de Dados)</h3>
-                <div class="chart-container">
-                    <canvas id="graficoHistorico"></canvas>
-                </div>
+    <main>
+      <section class="hero" id="monitor">
+        <div>
+          <p class="eyebrow">PLATAFORMA DE MONITORAMENTO AMBIENTAL</p>
+          <h1>Dados do <span>circuito</span>, direto no painel.</h1>
+          <p class="hero-copy">
+            O painel acompanha a ESP32 em tempo real e só exibe leituras quando há comunicação recente com o hardware.
+          </p>
+        </div>
+
+        <div class="hero-meta">
+          <div>
+            <span>Dispositivo</span>
+            <strong>SENTINELA-01</strong>
+          </div>
+          <div>
+            <span>Último contato</span>
+            <strong id="last-seen">—</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="live-section" aria-labelledby="live-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">AO VIVO</p>
+            <h2 id="live-title">Painel do ambiente</h2>
+          </div>
+          <div class="state-chip" id="state-chip">SEM DADOS</div>
+        </div>
+
+        <div class="offline-panel" id="offline-panel">
+          <div class="offline-icon">!</div>
+          <div>
+            <strong>Hardware offline</strong>
+            <p>Conecte e ligue o circuito para liberar as leituras deste painel.</p>
+          </div>
+        </div>
+
+        <div class="live-grid is-hidden" id="live-content">
+          <article class="metric-card metric-temperature">
+            <div class="metric-top">
+              <span class="metric-label">TEMPERATURA</span>
+              <span class="metric-icon">°C</span>
             </div>
-        </main>
-        
-        <footer>
-            <p>Status do Banco: <span class="online-indicator blinking"></span> <span id="footer-status">Gravando histórico e plotando gráfico ao vivo</span></p>
-        </footer>
-    </div>
-    <script src="script.js"></script>
+            <div class="metric-value" id="temperature-value">—</div>
+            <div class="metric-bottom">
+              <span>Leitura DHT11</span>
+              <span id="temperature-range">—</span>
+            </div>
+            <div class="progress"><span id="temperature-bar"></span></div>
+          </article>
+
+          <article class="metric-card metric-humidity">
+            <div class="metric-top">
+              <span class="metric-label">UMIDADE</span>
+              <span class="metric-icon">%</span>
+            </div>
+            <div class="metric-value" id="humidity-value">—</div>
+            <div class="metric-bottom">
+              <span>Leitura DHT11</span>
+              <span id="humidity-range">—</span>
+            </div>
+            <div class="progress"><span id="humidity-bar"></span></div>
+          </article>
+
+          <article class="metric-card metric-presence" id="presence-card">
+            <div class="metric-top">
+              <span class="metric-label">PRESENÇA</span>
+              <span class="metric-icon">PIR</span>
+            </div>
+            <div class="metric-value metric-value-sm" id="presence-value">—</div>
+            <div class="presence-visual">
+              <span class="presence-core"></span>
+              <span class="presence-ring ring-1"></span>
+              <span class="presence-ring ring-2"></span>
+            </div>
+            <div class="metric-bottom">
+              <span>Sensor HC-SR501</span>
+              <span id="presence-since">—</span>
+            </div>
+          </article>
+
+          <article class="state-card" id="state-card">
+            <div class="metric-top">
+              <span class="metric-label">CLASSIFICAÇÃO</span>
+              <span class="metric-icon">LED</span>
+            </div>
+            <div class="state-title" id="state-title">—</div>
+            <p id="state-description">—</p>
+            <div class="led-row" aria-label="Estado das luzes">
+              <div class="led" data-led="NORMAL"><i></i><span>VERDE</span></div>
+              <div class="led" data-led="ATENCAO"><i></i><span>AMARELO</span></div>
+              <div class="led" data-led="ALERTA"><i></i><span>VERMELHO</span></div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="history-section" id="historico" aria-labelledby="history-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">HISTÓRICO</p>
+            <h2 id="history-title">Tendências coletadas</h2>
+          </div>
+          <div class="history-controls">
+            <button class="filter-btn active" data-range="15">15 coletas</button>
+            <button class="filter-btn" data-range="30">30 coletas</button>
+            <button class="filter-btn" data-range="60">60 coletas</button>
+          </div>
+        </div>
+
+        <div class="history-grid">
+          <article class="chart-card large">
+            <div class="chart-head">
+              <div>
+                <strong>Temperatura</strong>
+                <span>Variação das últimas coletas</span>
+              </div>
+              <span class="chart-badge">°C</span>
+            </div>
+            <div class="chart-wrap"><canvas id="temperatureChart"></canvas></div>
+          </article>
+
+          <article class="chart-card large">
+            <div class="chart-head">
+              <div>
+                <strong>Umidade</strong>
+                <span>Variação das últimas coletas</span>
+              </div>
+              <span class="chart-badge">%</span>
+            </div>
+            <div class="chart-wrap"><canvas id="humidityChart"></canvas></div>
+          </article>
+        </div>
+
+        <div class="history-empty is-hidden" id="history-empty">
+          Ainda não há registros disponíveis em <code>historico</code>.
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>SENTINELA OS</span>
+      <span id="footer-status">Inicializando monitoramento…</span>
+    </footer>
+  </div>
+
+  <script src="script.js"></script>
 </body>
 </html>
